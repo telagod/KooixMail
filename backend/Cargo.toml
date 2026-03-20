@@ -1,0 +1,32 @@
+[package]
+name = "kooixmail-backend"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0.102"
+argon2 = "0.5.3"
+async-stream = "0.3.6"
+axum = "0.8.8"
+chrono = { version = "0.4.44", features = ["serde"] }
+mail-parser = "0.11.2"
+mail-auth = "0.7.5"
+rand = "0.10.0"
+rand_core = { version = "0.6.4", features = ["getrandom"] }
+rustls = "0.23.37"
+rustls-pemfile = "2.2.0"
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.149"
+smtpd = { version = "0.1.0", features = ["rustls-backend"] }
+sqlx = { version = "0.8.6", features = ["runtime-tokio-rustls", "sqlite", "chrono", "uuid"] }
+thiserror = "2.0.18"
+tokio = { version = "1.50.0", features = ["full"] }
+tower-http = { version = "0.6.8", features = ["cors"] }
+tracing = "0.1.44"
+tracing-subscriber = "0.3.23"
+uuid = { version = "1.22.0", features = ["v4", "serde"] }
+
+[dev-dependencies]
+tower = "0.5"
+tokio-rustls = "0.26"
+rustls-pki-types = "1"

@@ -1,0 +1,180 @@
+# KooixMail Local API Reference
+# Base URL: http://127.0.0.1:3000/api/v1
+# Authentication: Bearer session token
+# This file is designed to be sent to AI assistants for local integration help.
+
+---
+
+## Domains
+
+### GET /domains
+Returns enabled mailbox domains from `KOOIXMAIL_DOMAINS`.
+
+Response:
+```json
+[
+  {
+    "id": "kooixmail.local",
+    "domain": "kooixmail.local",
+    "isVerified": true
+  }
+]
+```
+
+---
+
+## Mailboxes
+
+### POST /mailboxes
+Create a mailbox and receive a session token immediately.
+
+Request:
+```json
+{
+  "address": "ember@kooixmail.local",
+  "password": "safepass123",
+  "expiresIn": 86400
+}
+```
+
+Rules:
+- local part must be at least 3 characters
+- password must be at least 6 characters
+- domain must exist in `KOOIXMAIL_DOMAINS`
+- `expiresIn` omitted = 24 hours
+- `expiresIn` = `0` or `-1` means never expire
+
+Response:
+```json
+{
+  "mailbox": {
+    "id": "uuid",
+    "address": "ember@kooixmail.local",
+    "createdAt": "2026-03-20T12:00:00+00:00",
+    "expiresAt": "2026-03-21T12:00:00+00:00"
+  },
+  "token": "uuid-session-token"
+}
+```
+
+### POST /sessions
+Login to an existing mailbox.
+
+Request:
+```json
+{
+  "address": "ember@kooixmail.local",
+  "password": "safepass123"
+}
+```
+
+Response matches `POST /mailboxes`.
+
+### GET /me
+Get current mailbox information.
+
+Header:
+```text
+Authorization: Bearer <token>
+```
+
+### DELETE /mailboxes/{id}
+Delete the current mailbox and all its messages.
+
+Header:
+```text
+Authorization: Bearer <token>
+```
+
+---
+
+## Messages
+
+### GET /messages
+List messages for the authenticated mailbox.
+
+### GET /messages/{id}
+Get full message detail.
+
+### PATCH /messages/{id}
+Mark a message as read or unread.
+
+Request:
+```json
+{
+  "seen": true
+}
+```
+
+### DELETE /messages/{id}
+Delete a single message.
+
+---
+
+## Events
+
+### GET /events?mailboxId=<id>&token=<token>
+Open an SSE stream for mailbox updates.
+
+Event types:
+- `connected`
+- `message.created`
+- `message.updated`
+- `message.deleted`
+
+Event payload:
+```json
+{
+  "kind": "message.created",
+  "mailboxId": "uuid",
+  "messageId": "uuid",
+  "createdAt": "2026-03-20T12:00:00+00:00"
+}
+```
+
+---
+
+## Inbound Delivery
+
+### POST /inbound/messages
+Inject an inbound message into a mailbox. Intended for local verification now, and for future SMTP/MTA bridge integration.
+
+If `INGRESS_TOKEN` is configured, send:
+```text
+X-Ingress-Token: <token>
+```
+
+Request:
+```json
+{
+  "to": "ember@kooixmail.local",
+  "fromAddress": "sender@example.com",
+  "fromName": "Outer Relay",
+  "subject": "Hello from the bridge",
+  "text": "This message was injected by the inbound bridge."
+}
+```
+
+Response:
+```json
+{
+  "id": "uuid",
+  "mailboxId": "uuid",
+  "subject": "Hello from the bridge",
+  "seen": false,
+  "text": "This message was injected by the inbound bridge.",
+  "html": [],
+  "attachments": []
+}
+```
+
+---
+
+## Error Format
+
+```json
+{
+  "error": "bad_request",
+  "message": "domain kooixmail.sbs is not enabled"
+}
+```
