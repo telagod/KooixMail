@@ -1,93 +1,129 @@
-# KooixMail
+# KooixMail ✉️
 
-Self-hosted temporary mailbox service — Rust backend + React frontend, zero third-party dependencies.
+> A temporary mailbox service you fully control. No third-party dependencies. Works out of the box.
 
-## Features
+KooixMail lets you run a complete temporary email system on your own machine — create mailboxes, receive emails, get real-time notifications. All data stays local.
 
-- Mailbox create/login/delete with Argon2 password hashing
-- Messages: receive/paginate/read-unread/delete
-- SSE real-time push (auto-reconnect with exponential backoff)
-- HTTP inbound endpoint + SMTP ingress (STARTTLS / implicit TLS)
-- SPF / DKIM / DMARC verification, local domain spoof protection
-- Per-IP rate limiting, message size limit, greylisting, RBL/DNSBL
-- Liquid glass UI with dark/light theme toggle (system preference + persistence)
-- Responsive layout (1320px / 960px / 480px breakpoints)
-- Accessibility: aria-live notifications, aria-label cards, keyboard navigation
+---
 
-## Quick Start
+## What can it do?
+
+🔒 **Mailbox Management** — Create disposable mailboxes on the fly, delete when done. Passwords stored with Argon2.
+
+📬 **Receive Emails** — Via HTTP endpoint or standard SMTP protocol. Can accept mail from the public internet via MX records.
+
+⚡ **Real-time Push** — Browser gets notified instantly when new mail arrives. Auto-reconnects if connection drops.
+
+🛡️ **Anti-Spam** — Built-in SPF/DKIM/DMARC verification, rate limiting, greylisting, and DNSBL lookups.
+
+🎨 **Beautiful UI** — Liquid glass aesthetic with dark/light theme toggle that follows your system preference.
+
+📱 **Responsive** — Works on desktop, tablet, and mobile.
+
+---
+
+## Get Running in 30 Seconds
+
+You need: [Rust](https://rustup.rs/) + [Node.js](https://nodejs.org/)
 
 ```bash
-# One-command start (requires Rust + Node.js)
+git clone https://github.com/telagod/KooixMail.git
+cd KooixMail
 make dev
-
-# Or start separately
-cd backend && cargo run        # http://127.0.0.1:3000
-cd frontend && npm run dev     # http://127.0.0.1:5173
 ```
 
-See [.env.example](.env.example) for environment variables.
+Then open http://127.0.0.1:5173 and you're good to go.
+
+> You can also start them separately: `cd backend && cargo run` and `cd frontend && npm run dev`
+
+Want to customize? Copy [.env.example](.env.example) to `.env` and tweak as needed.
+
+---
+
+## Project Structure
+
+```
+KooixMail/
+├── backend/      ← Rust backend (axum + SQLite)
+├── frontend/     ← React frontend (Vite + TypeScript)
+├── legacy/       ← Archived old version, not used
+├── Makefile      ← One-command dev/test/build
+└── .env.example  ← Environment variable template
+```
+
+---
+
+## API at a Glance
+
+All endpoints live under `/api/v1`:
+
+| What | How |
+|------|-----|
+| Create mailbox | `POST /mailboxes` |
+| Login | `POST /sessions` |
+| Current mailbox | `GET /me` |
+| Delete mailbox | `DELETE /mailboxes/:id` |
+| List messages | `GET /messages?limit=50&offset=0` |
+| Read a message | `GET /messages/:id` |
+| Mark read/unread | `PATCH /messages/:id` |
+| Delete message | `DELETE /messages/:id` |
+| Live event stream | `GET /events?mailboxId=...&token=...` |
+| Deliver a message | `POST /inbound/messages` |
+| Health check | `GET /healthz` |
+| Available domains | `GET /domains` |
+
+Full API docs: [frontend/public/llm-api-docs.txt](frontend/public/llm-api-docs.txt)
+
+---
+
+## Receiving Email
+
+KooixMail accepts email in two ways:
+
+**Option 1: HTTP Delivery** (great for testing and internal integrations)
+```bash
+curl -X POST http://127.0.0.1:3000/api/v1/inbound/messages \
+  -H "Content-Type: application/json" \
+  -d '{"to":"test@kooixmail.local","fromAddress":"me@example.com","subject":"Hello","text":"Hi!"}'
+```
+
+**Option 2: SMTP Ingress** (for receiving real email from the internet)
+- Development: listens on `127.0.0.1:2525` by default
+- Production: switch to `0.0.0.0:25`, enable TLS, set up MX records
+
+---
+
+## Key Configuration
+
+| Variable | What it does | Default |
+|----------|-------------|---------|
+| `KOOIXMAIL_DOMAINS` | Allowed mailbox domains | `kooixmail.local,quack.local` |
+| `INGRESS_TOKEN` | Delivery endpoint secret, empty = no auth | empty |
+| `SMTP_BIND_ADDR` | SMTP listen address, empty = disabled | `127.0.0.1:2525` |
+| `SMTP_TLS_MODE` | TLS mode | `disabled` |
+
+See [.env.example](.env.example) for all options.
+
+---
 
 ## Testing
 
 ```bash
 make test
-
-# Or separately
-cd backend && cargo test       # 90 tests
-cd frontend && npx tsc --noEmit
 ```
 
-Coverage:
-- `auth.rs` — address normalization, password validation, expiry, token extraction, hash roundtrip (32)
-- `db/` — full CRUD + cascade delete + pagination ordering (16)
-- `routes.rs` — all 12 API routes with auth/forbidden/conflict/ingress token (21)
-- `inbound.rs` — delivery + rate limit + local domain spoof + greylist + trusted bypass + oversize reject (8)
-- `smtp.rs` — TCP SMTP dialogue + STARTTLS handshake + TLS config validation (7)
-- `lib.rs` — config parsing (5)
+90 backend tests covering authentication, database operations, all API routes, email delivery policies, and SMTP protocol.
 
-## Architecture
-
-```
-backend/     Rust (axum + tokio + sqlx/sqlite)
-frontend/    React 19 + Vite + TypeScript
-legacy/      Archived Next.js remote client
-```
-
-## API
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/healthz` | Health check |
-| GET | `/api/v1/domains` | Available domains |
-| POST | `/api/v1/mailboxes` | Create mailbox |
-| POST | `/api/v1/sessions` | Login |
-| GET | `/api/v1/me` | Current mailbox info |
-| DELETE | `/api/v1/mailboxes/:id` | Delete mailbox |
-| GET | `/api/v1/messages?limit=&offset=` | List messages (paginated) |
-| GET | `/api/v1/messages/:id` | Message detail |
-| PATCH | `/api/v1/messages/:id` | Update read status |
-| DELETE | `/api/v1/messages/:id` | Delete message |
-| GET | `/api/v1/events?mailboxId=&token=` | SSE event stream |
-| POST | `/api/v1/inbound/messages` | HTTP delivery endpoint |
-
-Full API reference at [frontend/public/llm-api-docs.txt](frontend/public/llm-api-docs.txt).
-
-## Environment
-
-See [.env.example](.env.example). Key variables:
-
-- `KOOIXMAIL_DOMAINS` — allowed mailbox domains (comma-separated)
-- `INGRESS_TOKEN` — delivery endpoint token (empty = no auth)
-- `SMTP_BIND_ADDR` — SMTP listen address (empty = disabled)
-- `SMTP_TLS_MODE` — `disabled | starttls | require-starttls | implicit`
-
-## MX Setup
-
-- Dev: deliver to `127.0.0.1:2525`
-- Production: `SMTP_BIND_ADDR=0.0.0.0:25` + `SMTP_TLS_MODE=require-starttls` + certs + MX record
+---
 
 ## Known Limitations
 
-- Attachments return empty array (persistence not yet implemented)
-- Greylisting / rate limit state is in-process memory, lost on restart
-- SSE event bus is in-process broadcast, single-instance only
+- 📎 Attachments not yet implemented (API is ready, currently returns empty arrays)
+- 🔄 Rate limit and greylist state lives in memory, lost on restart
+- 📡 Real-time push uses in-process broadcast, single-instance only
+
+---
+
+## License
+
+MIT

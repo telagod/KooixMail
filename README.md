@@ -1,93 +1,129 @@
-# KooixMail
+# KooixMail ✉️
 
-自管临时邮箱服务 — Rust 后端 + React 前端，零第三方依赖。
+> 一个你可以完全掌控的临时邮箱服务。不依赖任何第三方，开箱即用。
 
-## 特性
+KooixMail 让你在自己的机器上运行一套完整的临时邮箱系统 — 创建邮箱、收发邮件、实时推送，全部数据留在本地。
 
-- 邮箱创建/登录/删除，Argon2 密码哈希
-- 消息收发/分页/已读未读/删除
-- SSE 实时推送（断线自动重连，指数退避）
-- HTTP inbound endpoint + SMTP ingress（STARTTLS / implicit TLS）
-- SPF / DKIM / DMARC 校验，本地域伪造保护
-- Per-IP 速率限制，消息大小限制，Greylisting，RBL/DNSBL
-- 液态玻璃美学 UI，深浅色主题切换（系统偏好跟随 + 持久化）
-- 响应式布局（1320px / 960px / 480px 三断点）
-- 无障碍：aria-live 通知、aria-label 卡片、键盘导航
+---
 
-## 快速启动
+## 它能做什么？
+
+🔒 **邮箱管理** — 随时创建临时邮箱，用完即删，密码用 Argon2 加密存储
+
+📬 **收邮件** — 支持 HTTP 投递和标准 SMTP 协议，可以直接接公网 MX 记录
+
+⚡ **实时推送** — 新邮件到达时浏览器即时通知，断线自动重连
+
+🛡️ **反垃圾邮件** — 内置 SPF/DKIM/DMARC 校验、速率限制、灰名单、黑名单查询
+
+🎨 **好看的界面** — 液态玻璃风格 UI，支持深色/浅色主题，自动跟随系统偏好
+
+📱 **响应式** — 桌面、平板、手机都能用
+
+---
+
+## 30 秒启动
+
+你需要：[Rust](https://rustup.rs/) + [Node.js](https://nodejs.org/)
 
 ```bash
-# 一键启动（需要 Rust + Node.js）
+git clone https://github.com/telagod/KooixMail.git
+cd KooixMail
 make dev
-
-# 或分别启动
-cd backend && cargo run        # http://127.0.0.1:3000
-cd frontend && npm run dev     # http://127.0.0.1:5173
 ```
 
-环境变量参考 [.env.example](.env.example)。
+然后打开 http://127.0.0.1:5173 就能用了。
+
+> 也可以分开启动：`cd backend && cargo run` 和 `cd frontend && npm run dev`
+
+想自定义配置？复制 [.env.example](.env.example) 为 `.env` 然后按需修改。
+
+---
+
+## 项目结构
+
+```
+KooixMail/
+├── backend/      ← Rust 后端 (axum + SQLite)
+├── frontend/     ← React 前端 (Vite + TypeScript)
+├── legacy/       ← 旧版归档，不参与运行
+├── Makefile      ← 一键启动/测试/构建
+└── .env.example  ← 环境变量模板
+```
+
+---
+
+## API 一览
+
+所有接口都在 `/api/v1` 下：
+
+| 做什么 | 怎么调 |
+|--------|--------|
+| 创建邮箱 | `POST /mailboxes` |
+| 登录 | `POST /sessions` |
+| 查看当前邮箱 | `GET /me` |
+| 删除邮箱 | `DELETE /mailboxes/:id` |
+| 收件列表 | `GET /messages?limit=50&offset=0` |
+| 读一封邮件 | `GET /messages/:id` |
+| 标记已读/未读 | `PATCH /messages/:id` |
+| 删除邮件 | `DELETE /messages/:id` |
+| 实时事件流 | `GET /events?mailboxId=...&token=...` |
+| 投递邮件 | `POST /inbound/messages` |
+| 健康检查 | `GET /healthz` |
+| 可用域名 | `GET /domains` |
+
+完整接口文档：[frontend/public/llm-api-docs.txt](frontend/public/llm-api-docs.txt)
+
+---
+
+## 收邮件
+
+KooixMail 有两种方式接收邮件：
+
+**方式一：HTTP 投递**（适合测试和内部集成）
+```bash
+curl -X POST http://127.0.0.1:3000/api/v1/inbound/messages \
+  -H "Content-Type: application/json" \
+  -d '{"to":"test@kooixmail.local","fromAddress":"me@example.com","subject":"Hello","text":"Hi!"}'
+```
+
+**方式二：SMTP 收信**（适合接公网邮件）
+- 开发环境：默认监听 `127.0.0.1:2525`
+- 生产环境：改为 `0.0.0.0:25`，开启 TLS，配好 MX 记录
+
+---
+
+## 关键配置
+
+| 变量 | 说明 | 默认值 |
+|------|------|--------|
+| `KOOIXMAIL_DOMAINS` | 允许的邮箱域名 | `kooixmail.local,quack.local` |
+| `INGRESS_TOKEN` | 投递接口密钥，留空不校验 | 空 |
+| `SMTP_BIND_ADDR` | SMTP 监听地址，留空禁用 | `127.0.0.1:2525` |
+| `SMTP_TLS_MODE` | TLS 模式 | `disabled` |
+
+更多配置见 [.env.example](.env.example)。
+
+---
 
 ## 测试
 
 ```bash
 make test
-
-# 或分别测试
-cd backend && cargo test       # 90 个测试
-cd frontend && npx tsc --noEmit
 ```
 
-测试覆盖：
-- `auth.rs` — 地址规范化、密码校验、过期检查、token 提取、hash 往返（32 个）
-- `db/` — 全部 CRUD + 级联删除 + 分页排序（16 个）
-- `routes.rs` — 12 条 API 路由全覆盖，含认证/越权/冲突/ingress token（21 个）
-- `inbound.rs` — 投递 + 速率限制 + 本地域防伪 + Greylist + trusted 跳过 + 超限拒绝（8 个）
-- `smtp.rs` — TCP SMTP 对话 + STARTTLS 握手 + TLS 配置校验（7 个）
-- `lib.rs` — 配置解析（5 个）
+后端 90 个测试覆盖了认证、数据库、全部 API 路由、邮件投递策略和 SMTP 协议。
 
-## 架构
-
-```
-backend/     Rust (axum + tokio + sqlx/sqlite)
-frontend/    React 19 + Vite + TypeScript
-legacy/      旧版 Next.js remote client 归档
-```
-
-## API 摘要
-
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/healthz` | 健康检查 |
-| GET | `/api/v1/domains` | 可用域名列表 |
-| POST | `/api/v1/mailboxes` | 创建邮箱 |
-| POST | `/api/v1/sessions` | 登录 |
-| GET | `/api/v1/me` | 当前邮箱信息 |
-| DELETE | `/api/v1/mailboxes/:id` | 删除邮箱 |
-| GET | `/api/v1/messages?limit=&offset=` | 消息列表（分页） |
-| GET | `/api/v1/messages/:id` | 消息详情 |
-| PATCH | `/api/v1/messages/:id` | 更新已读状态 |
-| DELETE | `/api/v1/messages/:id` | 删除消息 |
-| GET | `/api/v1/events?mailboxId=&token=` | SSE 事件流 |
-| POST | `/api/v1/inbound/messages` | HTTP 投递入口 |
-
-完整接口文档见 [frontend/public/llm-api-docs.txt](frontend/public/llm-api-docs.txt)。
-
-## 环境变量
-
-详见 [.env.example](.env.example)，关键项：
-
-- `KOOIXMAIL_DOMAINS` — 允许创建邮箱的域名列表
-- `INGRESS_TOKEN` — 投递入口 token（留空则不校验）
-- `SMTP_BIND_ADDR` — SMTP 监听地址（留空禁用）
-- `SMTP_TLS_MODE` — `disabled | starttls | require-starttls | implicit`
-
-## MX 接入
-
-- 开发：直接投递到 `127.0.0.1:2525`
-- 生产：`SMTP_BIND_ADDR=0.0.0.0:25` + `SMTP_TLS_MODE=require-starttls` + 证书 + MX 记录
+---
 
 ## 已知限制
 
-- 附件仅返回空数组（待实现持久化）
-- Greylisting / rate limit 状态为进程内存，重启丢失
-- SSE 事件总线为进程内 broadcast，单实例有效
+- 📎 附件功能尚未实现（接口已预留，当前返回空数组）
+- 🔄 速率限制和灰名单数据存在内存中，重启后丢失
+- 📡 实时推送基于进程内广播，仅支持单实例部署
+
+---
+
+## 许可
+
+MIT
