@@ -95,10 +95,14 @@ cargo run
 
 ## 测试
 
-- `cargo test --manifest-path backend/Cargo.toml`
-  - 覆盖 handler 级 SMTP 校验
-  - 覆盖真实 socket SMTP 对话落库
-  - 覆盖 `STARTTLS` 广告与响应
-  - 覆盖真实 TLS 握手后加密 SMTP 对话与落库
-  - 覆盖 `:25 + Disabled TLS` 启动硬拒绝
-  - 覆盖 greylisting 首次拒绝与延迟后放行
+```bash
+cargo test    # 90 个测试
+```
+
+覆盖范围：
+- `auth.rs` — 地址规范化、密码校验、过期检查、token 提取、hash 往返（32 个）
+- `db/` — 全部 CRUD + 级联删除 + 分页排序（16 个）
+- `routes.rs` — 12 条 API 路由全覆盖，含认证/越权/冲突/ingress token（21 个）
+- `inbound.rs` — 投递 + 速率限制 + 本地域防伪 + Greylist + trusted 跳过 + 超限拒绝（8 个）
+- `smtp.rs` — TCP SMTP 对话 + STARTTLS 握手 + TLS 配置校验（7 个）
+- `lib.rs` — 配置解析（5 个）
