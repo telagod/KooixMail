@@ -10,8 +10,9 @@
 
 # backend
 /backend/target
-/kooixmail.db
-/backend/kooixmail.db
+*.db
+*.db-shm
+*.db-wal
 
 # debug
 npm-debug.log*

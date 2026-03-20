@@ -209,17 +209,38 @@ function App() {
   useEffect(() => {
     if (!activeSession) return
 
-    const source = subscribeMailboxEvents(activeSession.mailbox.id, activeSession.token, () => {
-      void refreshMessages(true)
-    })
+    let closed = false
+    let source: ReturnType<typeof subscribeMailboxEvents> | null = null
+    let retryTimeout: ReturnType<typeof setTimeout> | null = null
+    let retryCount = 0
 
-    source.onerror = () => {
-      setNotice({ tone: "danger", text: "实时事件流断开，当前仍可手动刷新收件箱。" })
-      source.close()
+    function connect() {
+      if (closed) return
+      source = subscribeMailboxEvents(activeSession.mailbox.id, activeSession.token, () => {
+        void refreshMessages(true)
+      })
+
+      source.onopen = () => {
+        retryCount = 0
+      }
+
+      source.onerror = () => {
+        source?.close()
+        source = null
+        if (closed) return
+        retryCount += 1
+        const delay = Math.min(1000 * 2 ** retryCount, 30000)
+        setNotice({ tone: "danger", text: `实时事件流断开，${Math.round(delay / 1000)}s 后重连...` })
+        retryTimeout = setTimeout(connect, delay)
+      }
     }
 
+    connect()
+
     return () => {
-      source.close()
+      closed = true
+      source?.close()
+      if (retryTimeout) clearTimeout(retryTimeout)
     }
   }, [activeSession, activeSession?.mailbox.id, activeSession?.token, refreshMessages])
 
@@ -304,6 +325,8 @@ function App() {
 
   async function handleDeleteMailbox() {
     if (!activeSession) return
+    const confirmed = window.confirm(`确定要删除邮箱 ${activeSession.mailbox.address} 吗？此操作不可撤销。`)
+    if (!confirmed) return
     setBusy(true)
 
     try {
@@ -432,7 +455,7 @@ function App() {
       </header>
 
       <section className="notice-row">
-        <div className={`notice notice-${notice.tone}`}>{notice.text}</div>
+        <div className={`notice notice-${notice.tone}`} role="status" aria-live="polite">{notice.text}</div>
         <button className="ghost-button" onClick={() => void refreshMessages(true)} disabled={busy || !activeSession}>
           刷新收件箱
         </button>
@@ -513,6 +536,18 @@ function App() {
               <div className="credential-box">
                 <strong>{createdCredentials.address}</strong>
                 <span>{createdCredentials.password}</span>
+                <button
+                  className="ghost-button"
+                  type="button"
+                  onClick={() => {
+                    void navigator.clipboard.writeText(
+                      `${createdCredentials.address}\n${createdCredentials.password}`,
+                    )
+                    setNotice({ tone: "success", text: "凭据已复制到剪贴板。" })
+                  }}
+                >
+                  复制凭据
+                </button>
               </div>
             ) : null}
           </article>
@@ -605,22 +640,29 @@ function App() {
               <p className="panel-kicker">本地会话</p>
               <h2>已保存邮箱</h2>
             </div>
-            <span className="count-pill">{sessions.length}</span>
+            <span className="count-pill" aria-label={`共 ${sessions.length} 个邮箱`}>{sessions.length}</span>
           </div>
 
           <div className="session-list">
-            {sessions.map((session) => (
-              <button
-                key={session.mailbox.id}
-                className={`session-card ${session.mailbox.id === activeMailboxId ? "session-card-active" : ""}`}
-                onClick={() => setActiveMailboxId(session.mailbox.id)}
-                type="button"
-              >
-                <strong>{session.mailbox.address}</strong>
-                <span>创建于 {formatDate(session.mailbox.createdAt)}</span>
-                <span>过期于 {formatDate(session.mailbox.expiresAt)}</span>
-              </button>
-            ))}
+            {sessions.length === 0 ? (
+              <div className="empty-state">
+                <strong>尚无保存的邮箱</strong>
+                <p>请先创建或登录一个邮箱。</p>
+              </div>
+            ) : (
+              sessions.map((session) => (
+                <button
+                  key={session.mailbox.id}
+                  className={`session-card ${session.mailbox.id === activeMailboxId ? "session-card-active" : ""}`}
+                  onClick={() => setActiveMailboxId(session.mailbox.id)}
+                  type="button"
+                >
+                  <strong>{session.mailbox.address}</strong>
+                  <span>创建于 {formatDate(session.mailbox.createdAt)}</span>
+                  <span>过期于 {formatDate(session.mailbox.expiresAt)}</span>
+                </button>
+              ))
+            )}
           </div>
 
           <button className="danger-button" disabled={!activeSession || busy} onClick={handleDeleteMailbox}>
@@ -634,7 +676,7 @@ function App() {
               <p className="panel-kicker">收件箱</p>
               <h2>{activeSession?.mailbox.address ?? "等待邮箱"}</h2>
             </div>
-            <span className="count-pill">{messages.length}</span>
+            <span className="count-pill" aria-label={`共 ${messages.length} 封邮件`}>{messages.length}</span>
           </div>
 
           <div className="message-list">

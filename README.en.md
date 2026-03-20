@@ -82,7 +82,7 @@ INGRESS_RBL_ZONES=
 - `GET /api/v1/events?mailboxId=...&token=...`
 - `POST /api/v1/inbound/messages`
 
-The AI-oriented API reference now lives at [frontend/public/llm-api-docs.txt](/home/telagod/project/k2i/KooixMail/frontend/public/llm-api-docs.txt).
+The AI-oriented API reference now lives at [frontend/public/llm-api-docs.txt](frontend/public/llm-api-docs.txt).
 
 ## Current boundary
 

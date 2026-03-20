@@ -114,10 +114,38 @@
   --badge-text: var(--text-secondary);
 }
 
+[data-theme="dark"] option {
+  background: #1c1c26;
+  color: #e8e4df;
+}
+
 /* ── 全局主题过渡 ── */
-*,
-*::before,
-*::after {
+body,
+.shell,
+.panel,
+.hero-card,
+.notice,
+.badge,
+.count-pill,
+.session-card,
+.message-card,
+.credential-box,
+.empty-state,
+.message-body,
+.html-preview,
+.primary-button,
+.secondary-button,
+.ghost-button,
+.danger-button,
+.theme-toggle,
+input,
+select,
+textarea,
+label,
+.eyebrow,
+.panel-kicker,
+.hero-copy,
+.backdrop {
   transition: background-color var(--duration-normal) var(--ease-out-expo),
               border-color var(--duration-normal) var(--ease-out-expo),
               color var(--duration-fast) ease,
@@ -169,6 +197,13 @@ textarea:focus {
   outline: none;
   border-color: var(--border-active);
   box-shadow: 0 0 0 3px var(--accent-glow);
+}
+
+input:disabled,
+select:disabled,
+textarea:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 textarea {
@@ -534,10 +569,34 @@ label {
 }
 
 .session-list,
-.message-list,
+.message-list {
+  display: grid;
+  gap: 0.85rem;
+  max-height: 60vh;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-subtle) transparent;
+}
+
 .detail-content {
   display: grid;
   gap: 0.85rem;
+}
+
+.session-list::-webkit-scrollbar,
+.message-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.session-list::-webkit-scrollbar-track,
+.message-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.session-list::-webkit-scrollbar-thumb,
+.message-list::-webkit-scrollbar-thumb {
+  background: var(--border-subtle);
+  border-radius: 3px;
 }
 
 .session-card,
@@ -593,6 +652,7 @@ label {
   gap: 0.5rem;
   align-items: center;
   flex-shrink: 0;
+  flex-wrap: wrap;
 }
 
 .message-body,
@@ -647,5 +707,22 @@ label {
 
   .hero-header-row {
     flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 480px) {
+  .hero h1 {
+    font-size: 2rem;
+  }
+
+  .detail-actions {
+    width: 100%;
+    justify-content: stretch;
+  }
+
+  .detail-actions .ghost-button,
+  .detail-actions .danger-button {
+    flex: 1;
+    text-align: center;
   }
 }

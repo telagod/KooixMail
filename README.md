@@ -99,7 +99,7 @@ INGRESS_RBL_ZONES=
 - `GET /api/v1/events?mailboxId=...&token=...`
 - `POST /api/v1/inbound/messages`
 
-完整 AI 友好接口文档见 [frontend/public/llm-api-docs.txt](/home/telagod/project/k2i/KooixMail/frontend/public/llm-api-docs.txt)。
+完整 AI 友好接口文档见 [frontend/public/llm-api-docs.txt](frontend/public/llm-api-docs.txt)。
 
 ## 当前边界
 
