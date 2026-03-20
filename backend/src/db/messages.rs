@@ -47,6 +47,7 @@ pub async fn fetch_message(
     .await
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn insert_message(
     db: &SqlitePool,
     message_id: &str,

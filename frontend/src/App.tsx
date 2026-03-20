@@ -397,7 +397,7 @@ function App() {
         fromName: deliveryForm.fromName,
         subject: deliveryForm.subject,
         text: deliveryForm.text,
-      })
+      }, (import.meta.env.VITE_INGRESS_TOKEN as string | undefined) || undefined)
       setNotice({ tone: "success", text: "测试邮件已注入本地 inbound endpoint。" })
       await refreshMessages(false)
     } catch (error) {

@@ -1,7 +1,10 @@
 [package]
 name = "kooixmail-backend"
-version = "0.1.0"
+version = "2.0.0"
 edition = "2024"
+description = "KooixMail — self-hosted temporary mailbox backend (Rust/axum/SQLite)"
+repository = "https://github.com/telagod/KooixMail"
+license = "MIT"
 
 [dependencies]
 anyhow = "1.0.102"
