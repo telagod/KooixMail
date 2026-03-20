@@ -544,4 +544,49 @@ mod tests {
             ingest_inbound_message_with_context(&state, payload, context).await;
         assert!(result.is_ok(), "should pass after greylist delay");
     }
+
+    #[tokio::test]
+    async fn trusted_http_skips_rate_limit_policy() {
+        let mut state = build_test_state(&["kooixmail.local"]).await;
+        // 设置极低的 rate limit，trusted 路径应完全绕过
+        state.config.ingress_rate_limit_per_minute = 1;
+        let _ = seed_mailbox(&state, "rate@kooixmail.local").await;
+
+        let payload = InboundMessageRequest {
+            to: "rate@kooixmail.local".to_string(),
+            from_name: Some("Tester".to_string()),
+            from_address: "sender@outer.net".to_string(),
+            subject: Some("Rate test".to_string()),
+            text: Some("body".to_string()),
+            html: None,
+        };
+
+        for i in 0..5 {
+            let result = ingest_inbound_message(&state, payload.clone()).await;
+            assert!(result.is_ok(), "trusted delivery #{i} should succeed");
+        }
+    }
+
+    #[tokio::test]
+    async fn ingest_rejects_oversized_message() {
+        let state = build_test_state(&["kooixmail.local"]).await;
+        let _ = seed_mailbox(&state, "big@kooixmail.local").await;
+
+        // 超过默认 ingress_max_message_bytes (262144)
+        let huge_text = "x".repeat(300_000);
+        let payload = InboundMessageRequest {
+            to: "big@kooixmail.local".to_string(),
+            from_name: Some("Tester".to_string()),
+            from_address: "sender@outer.net".to_string(),
+            subject: Some("Huge".to_string()),
+            text: Some(huge_text),
+            html: None,
+        };
+
+        let result = ingest_inbound_message(&state, payload).await;
+        assert!(
+            matches!(result, Err(crate::models::AppError::BadRequest(_))),
+            "oversized message should be rejected with BadRequest"
+        );
+    }
 }

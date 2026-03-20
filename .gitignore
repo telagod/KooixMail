@@ -22,5 +22,6 @@ yarn-error.log*
 
 # env files
 .env*
+!.env.example
 .ace-tool/
 *.tsbuildinfo

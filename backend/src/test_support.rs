@@ -79,12 +79,13 @@ pub(crate) async fn build_test_state(domains: &[&str]) -> AppState {
 pub(crate) async fn seed_mailbox(state: &AppState, address: &str) -> MailboxRow {
     let mailbox_id = Uuid::new_v4().to_string();
     let created_at = now_ts();
+    let password_hash = crate::auth::hash_password("test-password").unwrap();
 
     insert_mailbox(
         state.db(),
         &mailbox_id,
         address,
-        "test-password-hash",
+        &password_hash,
         created_at,
         None,
     )

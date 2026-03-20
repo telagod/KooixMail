@@ -45,7 +45,7 @@ function formatRelative(value: string) {
   const date = new Date(value)
   const delta = Date.now() - date.getTime()
   const minutes = Math.round(delta / 60000)
-  if (minutes < 1) return "刚刚"
+  if (minutes <= 1) return "刚刚"
   if (minutes < 60) return `${minutes} 分钟前`
   const hours = Math.round(minutes / 60)
   if (hours < 24) return `${hours} 小时前`
@@ -77,6 +77,7 @@ function App() {
   const [selectedMessageId, setSelectedMessageId] = useState<string | null>(null)
   const [selectedMessage, setSelectedMessage] = useState<MessageDetail | null>(null)
   const [busy, setBusy] = useState(false)
+  const [loadingMessages, setLoadingMessages] = useState(false)
   const [notice, setNotice] = useState<{ tone: NoticeTone; text: string }>({
     tone: "neutral",
     text: "本地 Rust backend 已接管邮箱、消息、SSE 与临时数据存储。",
@@ -172,6 +173,7 @@ function App() {
       return
     }
 
+    setLoadingMessages(true)
     try {
       const nextMessages = await listMessages(activeSession.token, PAGE_SIZE, 0)
       setMessages(nextMessages)
@@ -188,6 +190,8 @@ function App() {
       }
     } catch (error) {
       setNotice({ tone: "danger", text: (error as Error).message })
+    } finally {
+      setLoadingMessages(false)
     }
   }, [activeSession, selectedMessageId])
 
@@ -421,7 +425,7 @@ function App() {
         <div className="hero-header-row">
           <div className="hero-card">
             <span className="badge">Backend</span>
-            <strong>{API_BASE_URL}</strong>
+            <strong>{import.meta.env.DEV ? API_BASE_URL : "KooixMail API"}</strong>
             <p>默认域名由 `KOOIXMAIL_DOMAINS` 控制，邮件入口走 `/api/v1/inbound/messages`。</p>
           </div>
           <button
@@ -656,6 +660,7 @@ function App() {
                   className={`session-card ${session.mailbox.id === activeMailboxId ? "session-card-active" : ""}`}
                   onClick={() => setActiveMailboxId(session.mailbox.id)}
                   type="button"
+                  aria-label={`切换到邮箱 ${session.mailbox.address}`}
                 >
                   <strong>{session.mailbox.address}</strong>
                   <span>创建于 {formatDate(session.mailbox.createdAt)}</span>
@@ -680,7 +685,11 @@ function App() {
           </div>
 
           <div className="message-list">
-            {messages.length === 0 ? (
+            {loadingMessages ? (
+              <div className="empty-state">
+                <strong>加载中...</strong>
+              </div>
+            ) : messages.length === 0 ? (
               <div className="empty-state">
                 <strong>暂无邮件</strong>
                 <p>创建邮箱后，可通过右侧投递表单或外部 SMTP/MTA 网关向 inbound endpoint 推送消息。</p>
@@ -692,6 +701,7 @@ function App() {
                   className={`message-card ${message.id === selectedMessageId ? "message-card-active" : ""}`}
                   onClick={() => setSelectedMessageId(message.id)}
                   type="button"
+                  aria-label={`${message.seen ? "已读" : "未读"}邮件：${message.subject}`}
                 >
                   <div className="message-card-head">
                     <strong>{message.subject}</strong>

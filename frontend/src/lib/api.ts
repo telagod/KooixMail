@@ -106,9 +106,14 @@ export function deliverMessage(payload: {
   subject?: string
   text?: string
   html?: string
-}) {
+}, ingressToken?: string) {
+  const headers: Record<string, string> = {}
+  if (ingressToken) {
+    headers["X-Ingress-Token"] = ingressToken
+  }
   return request<MessageDetail>("/inbound/messages", {
     method: "POST",
+    headers,
     body: JSON.stringify(payload),
   })
 }
