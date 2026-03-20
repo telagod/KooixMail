@@ -219,7 +219,7 @@ function App() {
     let retryCount = 0
 
     function connect() {
-      if (closed) return
+      if (closed || !activeSession) return
       source = subscribeMailboxEvents(activeSession.mailbox.id, activeSession.token, () => {
         void refreshMessages(true)
       })
