@@ -780,6 +780,31 @@ function App() {
                   </details>
                 </article>
               ) : null}
+
+              {selectedMessage.attachments.length > 0 ? (
+                <article className="attachments-section">
+                  <h3>附件 ({selectedMessage.attachments.length})</h3>
+                  <ul className="attachment-list">
+                    {selectedMessage.attachments.map((att) => (
+                      <li key={att.id} className="attachment-item">
+                        <span className="attachment-name">{att.filename}</span>
+                        <span className="attachment-meta">
+                          {att.contentType} · {att.size >= 1024 ? `${(att.size / 1024).toFixed(1)} KB` : `${att.size} B`}
+                        </span>
+                        <a
+                          className="ghost-button attachment-download"
+                          href={`${API_BASE_URL}${att.downloadUrl}${activeSession ? `?token=${encodeURIComponent(activeSession.token)}` : ""}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          download={att.filename}
+                        >
+                          下载
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                </article>
+              ) : null}
             </div>
           ) : (
             <div className="empty-state">

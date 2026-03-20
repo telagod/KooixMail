@@ -1,13 +1,18 @@
+mod attachments;
 mod mailboxes;
 mod messages;
 mod runtime;
 mod sessions;
 
+pub use attachments::{fetch_attachment, insert_attachment, list_attachments_meta};
 pub use mailboxes::{delete_mailbox, find_mailbox_by_address, insert_mailbox};
 pub use messages::{
     delete_message, fetch_message, insert_message, list_messages_by_mailbox, update_message_seen,
 };
-pub use runtime::{connect_db, migrate, spawn_cleanup_worker};
+pub use runtime::{
+    cleanup_old_events, connect_db, flush_greylist, flush_ingress_limits, insert_event,
+    load_greylist, load_ingress_limits, migrate, poll_events_since, spawn_cleanup_worker,
+};
 pub use sessions::{find_mailbox_by_session_token, insert_session};
 
 #[cfg(test)]
@@ -17,11 +22,13 @@ mod tests {
     use crate::{
         auth::now_ts,
         db::{
-            delete_mailbox, delete_message, fetch_message, find_mailbox_by_address,
-            find_mailbox_by_session_token, insert_mailbox, insert_message, insert_session,
-            list_messages_by_mailbox, update_message_seen,
+            cleanup_old_events, delete_mailbox, delete_message, fetch_attachment, fetch_message,
+            find_mailbox_by_address, find_mailbox_by_session_token, flush_greylist,
+            flush_ingress_limits, insert_attachment, insert_mailbox, insert_message, insert_session,
+            list_attachments_meta, list_messages_by_mailbox, load_greylist, load_ingress_limits,
+            poll_events_since, update_message_seen,
         },
-        db::runtime::cleanup_expired_mailboxes,
+        db::runtime::{cleanup_expired_mailboxes, insert_event},
         test_support::build_test_state,
     };
 
@@ -398,5 +405,138 @@ mod tests {
         assert!(find_mailbox_by_address(&state.db, "cascade@kooixmail.local").await.unwrap().is_none());
         assert!(find_mailbox_by_session_token(&state.db, "cleanup-token").await.unwrap().is_none());
         assert!(fetch_message(&state.db, &msg_id, &mailbox_id).await.unwrap().is_none());
+    }
+
+    // ── Phase 1: ingress_limits persistence ─────────────
+
+    #[tokio::test]
+    async fn load_ingress_limits_from_db() {
+        let state = build_test_state(&["example.com"]).await;
+        // Seed DB directly
+        sqlx::query("INSERT INTO ingress_limits (key, hit_at) VALUES (?, ?)")
+            .bind("ip:1.2.3.4")
+            .bind(1000i64)
+            .execute(&state.db)
+            .await
+            .unwrap();
+        sqlx::query("INSERT INTO ingress_limits (key, hit_at) VALUES (?, ?)")
+            .bind("ip:1.2.3.4")
+            .bind(2000i64)
+            .execute(&state.db)
+            .await
+            .unwrap();
+
+        let loaded = load_ingress_limits(&state.db).await.unwrap();
+        assert_eq!(loaded.get("ip:1.2.3.4").unwrap().len(), 2);
+    }
+
+    #[tokio::test]
+    async fn flush_and_load_ingress_limits_roundtrip() {
+        let state = build_test_state(&["example.com"]).await;
+        {
+            let mut limits = state.ingress_limits.write().await;
+            limits.insert("ip:10.0.0.1".to_string(), vec![100, 200, 300]);
+            limits.insert("sender:a@b.com".to_string(), vec![400]);
+        }
+
+        flush_ingress_limits(&state).await.unwrap();
+        let loaded = load_ingress_limits(&state.db).await.unwrap();
+        assert_eq!(loaded.get("ip:10.0.0.1").unwrap().len(), 3);
+        assert_eq!(loaded.get("sender:a@b.com").unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn flush_and_load_greylist_roundtrip() {
+        let state = build_test_state(&["example.com"]).await;
+        {
+            let mut greylist = state.greylist.write().await;
+            greylist.insert("grey:1.2.3.4:a@b:c@d".to_string(), 12345);
+            greylist.insert("grey:5.6.7.8:x@y:z@w".to_string(), 67890);
+        }
+
+        flush_greylist(&state).await.unwrap();
+        let loaded = load_greylist(&state.db).await.unwrap();
+        assert_eq!(loaded.len(), 2);
+        assert_eq!(*loaded.get("grey:1.2.3.4:a@b:c@d").unwrap(), 12345);
+    }
+
+    // ── Phase 2: attachments ────────────────────────────
+
+    #[tokio::test]
+    async fn insert_and_list_and_fetch_attachment() {
+        let state = build_test_state(&["example.com"]).await;
+        let mailbox_id = seed_mailbox_raw(&state.db, "att@example.com").await;
+        let msg_id = seed_message_raw(&state.db, &mailbox_id, now_ts()).await;
+
+        insert_attachment(
+            &state.db, "att-1", &msg_id, "file.txt", "text/plain", "attachment", 5, b"hello",
+        )
+        .await
+        .unwrap();
+
+        let meta = list_attachments_meta(&state.db, &msg_id).await.unwrap();
+        assert_eq!(meta.len(), 1);
+        assert_eq!(meta[0].filename, "file.txt");
+        assert_eq!(meta[0].size, 5);
+
+        let full = fetch_attachment(&state.db, "att-1", &msg_id).await.unwrap().unwrap();
+        assert_eq!(full.data, b"hello");
+        assert_eq!(full.content_type, "text/plain");
+    }
+
+    #[tokio::test]
+    async fn attachment_cascade_on_message_delete() {
+        let state = build_test_state(&["example.com"]).await;
+        let mailbox_id = seed_mailbox_raw(&state.db, "cas-att@example.com").await;
+        let msg_id = seed_message_raw(&state.db, &mailbox_id, now_ts()).await;
+
+        insert_attachment(
+            &state.db, "att-cas", &msg_id, "doc.pdf", "application/pdf", "attachment", 3, b"pdf",
+        )
+        .await
+        .unwrap();
+
+        delete_message(&state.db, &msg_id, &mailbox_id).await.unwrap();
+
+        let meta = list_attachments_meta(&state.db, &msg_id).await.unwrap();
+        assert!(meta.is_empty());
+    }
+
+    // ── Phase 3: events ─────────────────────────────────
+
+    #[tokio::test]
+    async fn insert_and_poll_events() {
+        let state = build_test_state(&["example.com"]).await;
+        let now = now_ts();
+
+        let id1 = insert_event(&state.db, "mb-1", "message.created", "msg-1", now).await.unwrap();
+        let id2 = insert_event(&state.db, "mb-1", "message.updated", "msg-1", now).await.unwrap();
+        let _id3 = insert_event(&state.db, "mb-2", "message.created", "msg-2", now).await.unwrap();
+
+        // Poll from 0 for mb-1 should get 2 events
+        let events = poll_events_since(&state.db, "mb-1", 0).await.unwrap();
+        assert_eq!(events.len(), 2);
+
+        // Poll from id1 should get only id2
+        let events = poll_events_since(&state.db, "mb-1", id1).await.unwrap();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].id, id2);
+    }
+
+    #[tokio::test]
+    async fn cleanup_old_events_removes_expired() {
+        let state = build_test_state(&["example.com"]).await;
+        let now = now_ts();
+
+        // Old event (6 minutes ago)
+        insert_event(&state.db, "mb-1", "message.created", "old-msg", now - 360).await.unwrap();
+        // Recent event
+        insert_event(&state.db, "mb-1", "message.created", "new-msg", now).await.unwrap();
+
+        cleanup_old_events(&state.db).await.unwrap();
+
+        let events = poll_events_since(&state.db, "mb-1", 0).await.unwrap();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].message_id, "new-msg");
     }
 }

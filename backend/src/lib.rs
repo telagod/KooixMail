@@ -17,7 +17,7 @@ pub mod smtp;
 pub(crate) mod test_support;
 
 use crate::{
-    db::{connect_db, migrate, spawn_cleanup_worker},
+    db::{connect_db, load_greylist, load_ingress_limits, migrate, spawn_cleanup_worker},
     models::{AppConfig, AppState, SmtpTlsMode},
     routes::build_router,
 };
@@ -28,12 +28,15 @@ pub async fn run() -> anyhow::Result<()> {
     migrate(&db).await?;
     let mail_auth = build_mail_authenticator(&config)?;
 
+    let persisted_limits = load_ingress_limits(&db).await.unwrap_or_default();
+    let persisted_greylist = load_greylist(&db).await.unwrap_or_default();
+
     let state = AppState {
         db,
         config,
         events: Arc::new(RwLock::new(HashMap::new())),
-        ingress_limits: Arc::new(RwLock::new(HashMap::new())),
-        greylist: Arc::new(RwLock::new(HashMap::new())),
+        ingress_limits: Arc::new(RwLock::new(persisted_limits)),
+        greylist: Arc::new(RwLock::new(persisted_greylist)),
         mail_auth,
     };
 

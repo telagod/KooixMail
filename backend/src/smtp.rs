@@ -5,7 +5,7 @@ use mail_auth::{
     AuthenticatedMessage, DkimResult, DmarcResult, MessageAuthenticator, SpfResult,
     dmarc::verify::DmarcParameters, spf::verify::SpfParameters,
 };
-use mail_parser::MessageParser;
+use mail_parser::{MessageParser, MimeHeaders};
 use rustls_pemfile::{certs, private_key};
 use smtpd::{
     Response as SmtpResponse, ServerConfig, Session, SmtpConfig, SmtpHandler, SmtpHandlerFactory,
@@ -20,7 +20,7 @@ use crate::{
         AuthVerdict, InboundAuthReport, InboundContext, default_bounce_address,
         ingest_inbound_message_with_context, organizational_domain, sender_domain,
     },
-    models::{AppConfig, AppError, AppState, InboundMessageRequest, SmtpTlsMode},
+    models::{AppConfig, AppError, AppState, InboundAttachment, InboundMessageRequest, SmtpTlsMode},
 };
 
 pub async fn serve_smtp(state: AppState) -> anyhow::Result<()> {
@@ -132,6 +132,46 @@ impl SmtpHandler for SmtpIngressHandler {
         )
         .await;
 
+        let attachments: Vec<InboundAttachment> = parsed
+            .as_ref()
+            .map(|message| {
+                message
+                    .attachments()
+                    .map(|part| {
+                        let filename = part
+                            .attachment_name()
+                            .unwrap_or("attachment")
+                            .to_string();
+                        let content_type = part
+                            .content_type()
+                            .map(|ct| {
+                                if let Some(subtype) = ct.subtype() {
+                                    format!("{}/{}", ct.ctype(), subtype)
+                                } else {
+                                    ct.ctype().to_string()
+                                }
+                            })
+                            .unwrap_or_else(|| "application/octet-stream".to_string());
+                        let disposition = if part
+                            .content_disposition()
+                            .map(|cd| cd.ctype() == "inline")
+                            .unwrap_or(false)
+                        {
+                            "inline".to_string()
+                        } else {
+                            "attachment".to_string()
+                        };
+                        InboundAttachment {
+                            filename,
+                            content_type,
+                            disposition,
+                            data: part.contents().to_vec(),
+                        }
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+
         let mut delivered: usize = 0;
         let mut last_error: Option<smtpd::Error> = None;
 
@@ -154,7 +194,14 @@ impl SmtpHandler for SmtpIngressHandler {
                 auth: auth.clone(),
             };
 
-            match ingest_inbound_message_with_context(&self.state, payload, context).await {
+            match ingest_inbound_message_with_context(
+                &self.state,
+                payload,
+                context,
+                attachments.clone(),
+            )
+            .await
+            {
                 Ok(_) => delivered += 1,
                 Err(error) => {
                     warn!(recipient = %recipient, ?error, "smtp ingress rejected message for recipient");

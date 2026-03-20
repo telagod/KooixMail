@@ -726,3 +726,61 @@ label {
     text-align: center;
   }
 }
+
+/* ── 附件区块 ── */
+
+.attachments-section {
+  margin-top: 1.25rem;
+  padding: 1rem;
+  background: var(--bg-glass);
+  backdrop-filter: blur(var(--blur-glass)) saturate(1.4);
+  border: 1px solid var(--border-glass);
+  border-radius: 12px;
+  box-shadow: var(--shadow-glass);
+}
+
+.attachments-section h3 {
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 0.95rem;
+  font-weight: 600;
+  margin: 0 0 0.75rem;
+  color: var(--text-primary);
+}
+
+.attachment-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.attachment-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  flex-wrap: wrap;
+}
+
+.attachment-name {
+  font-weight: 500;
+  color: var(--text-primary);
+  word-break: break-all;
+}
+
+.attachment-meta {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.attachment-download {
+  margin-left: auto;
+  font-size: 0.8rem;
+  text-decoration: none;
+  padding: 0.25rem 0.75rem;
+}

@@ -10,10 +10,10 @@ use axum::{
 
 use crate::{
     auth::{now_ts, ts_to_rfc3339},
-    db::fetch_message,
+    db::{fetch_message, insert_event},
     models::{
-        AppError, AppState, ContactResponse, MailboxEvent, MailboxResponse, MailboxRow,
-        MessageDetailResponse, MessageRow, MessageSummaryResponse,
+        AppError, AppState, AttachmentResponse, ContactResponse, MailboxEvent, MailboxResponse,
+        MailboxRow, MessageDetailResponse, MessageRow, MessageSummaryResponse,
     },
 };
 
@@ -34,6 +34,10 @@ pub fn build_router(state: AppState) -> Router {
             get(messages::get_message)
                 .patch(messages::update_message)
                 .delete(messages::delete_message_handler),
+        )
+        .route(
+            "/api/v1/messages/{message_id}/attachments/{attachment_id}",
+            get(messages::download_attachment),
         )
         .route("/api/v1/events", get(events::stream_events))
         .route("/api/v1/inbound/messages", post(messages::deliver_message))
@@ -56,12 +60,17 @@ pub(crate) async fn broadcast_event(
     message_id: &str,
     kind: &str,
 ) {
+    let now = now_ts();
+    let db_id = insert_event(&state.db, mailbox_id, kind, message_id, now)
+        .await
+        .ok();
     let sender = event_sender(state, mailbox_id).await;
     let _ = sender.send(MailboxEvent {
         kind: kind.to_string(),
         mailbox_id: mailbox_id.to_string(),
         message_id: message_id.to_string(),
-        created_at: ts_to_rfc3339(now_ts()),
+        created_at: ts_to_rfc3339(now),
+        db_id,
     });
 }
 
@@ -96,7 +105,7 @@ pub(super) fn map_mailbox(row: MailboxRow) -> MailboxResponse {
     }
 }
 
-pub(super) fn map_message_summary(row: &MessageRow) -> MessageSummaryResponse {
+pub(super) fn map_message_summary(row: &MessageRow, has_attachments: bool) -> MessageSummaryResponse {
     let size = row.text_body.len() + row.html_body.as_deref().unwrap_or_default().len();
     MessageSummaryResponse {
         id: row.id.clone(),
@@ -112,19 +121,23 @@ pub(super) fn map_message_summary(row: &MessageRow) -> MessageSummaryResponse {
         subject: row.subject.clone(),
         intro: intro(&row.text_body),
         seen: row.seen == 1,
-        has_attachments: false,
+        has_attachments,
         size,
         created_at: ts_to_rfc3339(row.created_at),
         updated_at: ts_to_rfc3339(row.updated_at),
     }
 }
 
-pub(super) fn map_message_detail(row: MessageRow) -> MessageDetailResponse {
+pub(super) fn map_message_detail(
+    row: MessageRow,
+    attachments: Vec<AttachmentResponse>,
+) -> MessageDetailResponse {
+    let has_attachments = !attachments.is_empty();
     MessageDetailResponse {
-        summary: map_message_summary(&row),
+        summary: map_message_summary(&row, has_attachments),
         text: row.text_body,
         html: row.html_body.into_iter().collect(),
-        attachments: Vec::new(),
+        attachments,
     }
 }
 

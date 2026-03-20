@@ -6,8 +6,8 @@ use uuid::Uuid;
 
 use crate::{
     auth::{ensure_allowed_domain, ensure_not_expired, normalize_address, now_ts},
-    db::{find_mailbox_by_address, insert_message},
-    models::{AppConfig, AppError, AppState, InboundMessageRequest, MessageRow},
+    db::{find_mailbox_by_address, insert_attachment, insert_message},
+    models::{AppConfig, AppError, AppState, InboundAttachment, InboundMessageRequest, MessageRow},
     routes::broadcast_event,
 };
 
@@ -63,13 +63,15 @@ pub async fn ingest_inbound_message(
     state: &AppState,
     payload: InboundMessageRequest,
 ) -> Result<MessageRow, AppError> {
-    ingest_inbound_message_with_context(state, payload, InboundContext::trusted_http()).await
+    ingest_inbound_message_with_context(state, payload, InboundContext::trusted_http(), vec![])
+        .await
 }
 
 pub async fn ingest_inbound_message_with_context(
     state: &AppState,
     payload: InboundMessageRequest,
     context: InboundContext,
+    attachments: Vec<InboundAttachment>,
 ) -> Result<MessageRow, AppError> {
     let recipient = normalize_address(&payload.to)?;
     ensure_allowed_domain(&state.config.domains, &recipient)?;
@@ -105,6 +107,22 @@ pub async fn ingest_inbound_message_with_context(
         now,
     )
     .await?;
+
+    for attachment in &attachments {
+        let att_id = Uuid::new_v4().to_string();
+        insert_attachment(
+            &state.db,
+            &att_id,
+            &message_id,
+            &attachment.filename,
+            &attachment.content_type,
+            &attachment.disposition,
+            attachment.data.len() as i64,
+            &attachment.data,
+        )
+        .await
+        .map_err(AppError::Internal)?;
+    }
 
     broadcast_event(state, &mailbox.id, &message_id, "message.created").await;
 
@@ -440,6 +458,7 @@ mod tests {
                 remote_ip: Some("203.0.113.10".to_string()),
                 ..InboundContext::default()
             },
+            vec![],
         )
         .await
         .unwrap();
@@ -459,6 +478,7 @@ mod tests {
                 remote_ip: Some("203.0.113.10".to_string()),
                 ..InboundContext::default()
             },
+            vec![],
         )
         .await;
 
@@ -495,6 +515,7 @@ mod tests {
                 }),
                 ..InboundContext::default()
             },
+            vec![],
         )
         .await;
 
@@ -524,7 +545,7 @@ mod tests {
 
         // 首次 — 应被 greylist 拒绝
         let result =
-            ingest_inbound_message_with_context(&state, payload.clone(), context.clone()).await;
+            ingest_inbound_message_with_context(&state, payload.clone(), context.clone(), vec![]).await;
         assert!(
             matches!(result, Err(crate::models::AppError::TooManyRequests(_))),
             "first attempt should be greylisted"
@@ -532,7 +553,7 @@ mod tests {
 
         // 立即重试 — 仍在延迟期内，应被拒绝
         let result =
-            ingest_inbound_message_with_context(&state, payload.clone(), context.clone()).await;
+            ingest_inbound_message_with_context(&state, payload.clone(), context.clone(), vec![]).await;
         assert!(
             matches!(result, Err(crate::models::AppError::TooManyRequests(_))),
             "immediate retry should still be greylisted"
@@ -541,7 +562,7 @@ mod tests {
         // 等待延迟期过后 — 应放行
         tokio::time::sleep(std::time::Duration::from_secs(2)).await;
         let result =
-            ingest_inbound_message_with_context(&state, payload, context).await;
+            ingest_inbound_message_with_context(&state, payload, context, vec![]).await;
         assert!(result.is_ok(), "should pass after greylist delay");
     }
 

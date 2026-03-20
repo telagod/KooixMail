@@ -221,6 +221,17 @@ pub struct MailboxEvent {
     pub mailbox_id: String,
     pub message_id: String,
     pub created_at: String,
+    #[serde(skip)]
+    pub db_id: Option<i64>,
+}
+
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct EventRow {
+    pub id: i64,
+    pub mailbox_id: String,
+    pub kind: String,
+    pub message_id: String,
+    pub created_at: i64,
 }
 
 #[derive(Deserialize)]
@@ -291,4 +302,33 @@ pub struct MessageRow {
     pub seen: i64,
     pub created_at: i64,
     pub updated_at: i64,
+}
+
+#[derive(Debug, Clone)]
+pub struct InboundAttachment {
+    pub filename: String,
+    pub content_type: String,
+    pub disposition: String,
+    pub data: Vec<u8>,
+}
+
+#[derive(Debug, Clone, FromRow)]
+pub struct AttachmentRow {
+    pub id: String,
+    pub message_id: String,
+    pub filename: String,
+    pub content_type: String,
+    pub disposition: String,
+    pub size: i64,
+    pub data: Vec<u8>,
+}
+
+#[derive(Debug, Clone, FromRow)]
+pub struct AttachmentMetaRow {
+    pub id: String,
+    pub message_id: String,
+    pub filename: String,
+    pub content_type: String,
+    pub disposition: String,
+    pub size: i64,
 }
