@@ -1,9 +1,10 @@
 use std::{collections::HashMap, env, net::SocketAddr, sync::Arc};
 
 use anyhow::Context;
+use axum::extract::DefaultBodyLimit;
 use mail_auth::MessageAuthenticator;
 use tokio::{net::TcpListener, sync::RwLock};
-use tower_http::cors::CorsLayer;
+use tower_http::cors::{AllowOrigin, CorsLayer};
 use tracing::{info, warn};
 
 pub mod auth;
@@ -38,7 +39,10 @@ pub async fn run() -> anyhow::Result<()> {
 
     spawn_cleanup_worker(state.clone());
 
-    let app = build_router(state.clone()).layer(CorsLayer::permissive());
+    let cors = build_cors_layer();
+    let app = build_router(state.clone())
+        .layer(cors)
+        .layer(DefaultBodyLimit::max(4 * 1024 * 1024)); // 4MB global limit
     let http_server = async move {
         info!(%address, "kooixmail backend listening");
         let listener = TcpListener::bind(address).await?;
@@ -260,6 +264,24 @@ fn build_mail_authenticator(
         Err(error) => {
             Err(anyhow::Error::new(error).context("failed to initialize mail authentication"))
         }
+    }
+}
+
+fn build_cors_layer() -> CorsLayer {
+    let raw = env::var("CORS_ALLOWED_ORIGINS").unwrap_or_default();
+    let origins: Vec<&str> = raw.split(',').map(str::trim).filter(|s| !s.is_empty()).collect();
+
+    if origins.is_empty() {
+        CorsLayer::permissive()
+    } else {
+        let parsed: Vec<_> = origins
+            .iter()
+            .filter_map(|o| o.parse().ok())
+            .collect();
+        CorsLayer::new()
+            .allow_origin(AllowOrigin::list(parsed))
+            .allow_methods(tower_http::cors::Any)
+            .allow_headers(tower_http::cors::Any)
     }
 }
 
