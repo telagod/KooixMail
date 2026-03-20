@@ -88,7 +88,7 @@ pub fn spawn_cleanup_worker(state: AppState) {
     });
 }
 
-async fn cleanup_expired_mailboxes(db: &SqlitePool) -> anyhow::Result<()> {
+pub(crate) async fn cleanup_expired_mailboxes(db: &SqlitePool) -> anyhow::Result<()> {
     sqlx::query("DELETE FROM mailboxes WHERE expires_at IS NOT NULL AND expires_at <= ?")
         .bind(now_ts())
         .execute(db)

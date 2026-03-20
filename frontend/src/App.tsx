@@ -759,8 +759,25 @@ function App() {
 
               {selectedMessage.html.length > 0 ? (
                 <article className="html-preview">
-                  <h3>HTML 片段</h3>
-                  <pre>{selectedMessage.html[0]}</pre>
+                  <h3>HTML 预览</h3>
+                  <iframe
+                    sandbox=""
+                    srcDoc={selectedMessage.html[0]}
+                    title="HTML 邮件预览"
+                    style={{
+                      width: "100%",
+                      minHeight: "200px",
+                      border: "1px solid var(--border-subtle)",
+                      borderRadius: "12px",
+                      background: "white",
+                    }}
+                  />
+                  <details style={{ marginTop: "0.5rem" }}>
+                    <summary style={{ cursor: "pointer", color: "var(--text-muted)", fontSize: "0.85rem" }}>
+                      查看原始 HTML
+                    </summary>
+                    <pre>{selectedMessage.html[0]}</pre>
+                  </details>
                 </article>
               ) : null}
             </div>

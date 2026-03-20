@@ -21,6 +21,7 @@ mod tests {
             find_mailbox_by_session_token, insert_mailbox, insert_message, insert_session,
             list_messages_by_mailbox, update_message_seen,
         },
+        db::runtime::cleanup_expired_mailboxes,
         test_support::build_test_state,
     };
 
@@ -346,5 +347,56 @@ mod tests {
 
         let result = fetch_message(db, &msg_id, &mailbox_a).await.unwrap();
         assert!(result.is_some(), "message should still exist in mailbox_a");
+    }
+
+    #[tokio::test]
+    async fn cleanup_removes_expired_mailboxes() {
+        let state = build_test_state(&["kooixmail.local"]).await;
+        let now = crate::auth::now_ts();
+
+        // 创建一个已过期的邮箱
+        let expired_id = Uuid::new_v4().to_string();
+        insert_mailbox(&state.db, &expired_id, "expired@kooixmail.local", "hash", now - 1000, Some(now - 500)).await.unwrap();
+
+        // 创建一个未过期的邮箱
+        let valid_id = Uuid::new_v4().to_string();
+        insert_mailbox(&state.db, &valid_id, "valid@kooixmail.local", "hash", now, Some(now + 86400)).await.unwrap();
+
+        // 创建一个永不过期的邮箱
+        let forever_id = Uuid::new_v4().to_string();
+        insert_mailbox(&state.db, &forever_id, "forever@kooixmail.local", "hash", now, None).await.unwrap();
+
+        // 执行清理
+        cleanup_expired_mailboxes(&state.db).await.unwrap();
+
+        // 已过期的应该被删除
+        assert!(find_mailbox_by_address(&state.db, "expired@kooixmail.local").await.unwrap().is_none());
+        // 未过期的应该保留
+        assert!(find_mailbox_by_address(&state.db, "valid@kooixmail.local").await.unwrap().is_some());
+        // 永不过期的应该保留
+        assert!(find_mailbox_by_address(&state.db, "forever@kooixmail.local").await.unwrap().is_some());
+    }
+
+    #[tokio::test]
+    async fn cleanup_cascades_sessions_and_messages() {
+        let state = build_test_state(&["kooixmail.local"]).await;
+        let now = crate::auth::now_ts();
+
+        // 创建已过期邮箱
+        let mailbox_id = Uuid::new_v4().to_string();
+        insert_mailbox(&state.db, &mailbox_id, "cascade@kooixmail.local", "hash", now - 1000, Some(now - 500)).await.unwrap();
+
+        // 给它加 session 和 message
+        insert_session(&state.db, "cleanup-token", &mailbox_id, now).await.unwrap();
+        let msg_id = Uuid::new_v4().to_string();
+        insert_message(&state.db, &msg_id, &mailbox_id, "cascade@kooixmail.local", "Sender", "s@x.com", "Test", "body", None, now).await.unwrap();
+
+        // 执行清理
+        cleanup_expired_mailboxes(&state.db).await.unwrap();
+
+        // 邮箱、session、message 都应该被级联删除
+        assert!(find_mailbox_by_address(&state.db, "cascade@kooixmail.local").await.unwrap().is_none());
+        assert!(find_mailbox_by_session_token(&state.db, "cleanup-token").await.unwrap().is_none());
+        assert!(fetch_message(&state.db, &msg_id, &mailbox_id).await.unwrap().is_none());
     }
 }
